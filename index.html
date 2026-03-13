@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>최단 경로 검색 앱</title>
+
+<link rel="icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=17fe58441c99cb4995b13def7e66714b&libraries=services&autoload=false"></script>
+
+<style>
+
+body{
+font-family:Arial;
+margin:0;
+background:#f2f4f7;
+}
+
+.header{
+text-align:center;
+padding:15px;
+font-size:20px;
+background:#4a6fb3;
+color:white;
+}
+
+.container{
+padding:10px;
+}
+
+.card{
+background:white;
+padding:14px;
+border-radius:12px;
+margin-bottom:10px;
+box-shadow:0 2px 6px rgba(0,0,0,0.08);
+}
+
+.title{
+font-weight:bold;
+margin-bottom:10px;
+}
+
+.optionRow{
+display:flex;
+gap:20px;
+align-items:center;
+flex-wrap:wrap;
+}
+
+.optionRow label{
+display:flex;
+align-items:center;
+gap:5px;
+}
+
+/* text input만 width 적용 */
+
+input[type="text"]{
+width:100%;
+padding:12px;
+margin-top:6px;
+font-size:16px;
+border:1px solid #ccc;
+border-radius:8px;
+}
+
+button{
+width:100%;
+padding:14px;
+margin-top:10px;
+font-size:16px;
+background:#3b6edb;
+color:white;
+border:none;
+border-radius:10px;
+}
+
+.placeRow{
+display:flex;
+gap:5px;
+margin-top:6px;
+}
+
+.placeRow input{
+flex:1;
+}
+
+.deleteBtn{
+width:40px;
+background:#ff4d4d;
+color:white;
+border:none;
+border-radius:8px;
+}
+
+#map{
+width:100%;
+height:360px;
+border-radius:12px;
+margin-top:10px;
+}
+
+.result{
+margin-top:10px;
+font-size:15px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+🚗 최단 경로 검색 앱
+</div>
+
+<div class="container">
+
+<!-- 검색 방식 -->
+
+<div class="card">
+
+<div class="title">검색 방식</div>
+
+<div class="optionRow">
+<label><input type="radio" name="searchMode" value="auto" checked> 자동</label>
+<label><input type="radio" name="searchMode" value="address"> 주소</label>
+<label><input type="radio" name="searchMode" value="keyword"> 장소</label>
+</div>
+
+</div>
+
+<!-- 경로 옵션 -->
+
+<div class="card">
+
+<div class="title">경로 옵션</div>
+
+<div class="optionRow">
+<label><input type="checkbox" id="returnHome"> 출발지 복귀</label>
+</div>
+
+<br>
+
+<div class="optionRow">
+<label><input type="radio" name="mode" value="distance" checked> 최단 거리</label>
+<label><input type="radio" name="mode" value="time"> 최단 시간</label>
+</div>
+
+</div>
+
+<!-- 출발지 -->
+
+<div class="card">
+
+<div class="title">출발지</div>
+
+<input type="text" id="start" placeholder="주소 또는 장소">
+
+<button onclick="setCurrentLocation()">📍 현재 위치 사용</button>
+
+</div>
+
+<!-- 방문지 -->
+
+<div class="card">
+
+<div class="title">방문지</div>
+
+<div id="places"></div>
+
+<button onclick="addPlace()">+ 방문지 추가</button>
+
+</div>
+
+<!-- 계산 -->
+
+<div class="card">
+
+<button onclick="calculate()">경로 계산</button>
+
+<div class="result">
+
+<div id="distance"></div>
+<div id="time"></div>
+<div id="routeList"></div>
+
+</div>
+
+<button onclick="resetAll()">초기화</button>
+
+</div>
+
+<div id="map"></div>
+
+</div>
+
+<script>
+
+const REST_KEY="7b32497ba822d675fd0c5e0bdef06c4f";
+
+let currentLocation=null;
+let placeCount=0;
+
+kakao.maps.load(function(){
+
+var map=new kakao.maps.Map(document.getElementById('map'),{
+center:new kakao.maps.LatLng(36.5,127.8),
+level:13
+});
+
+var markers=[];
+var lines=[];
+
+function clearMap(){
+markers.forEach(m=>m.setMap(null));
+lines.forEach(l=>l.setMap(null));
+markers=[];
+lines=[];
+}
+
+window.addPlace=function(){
+
+if(placeCount>=5){
+alert("방문지는 최대 5개까지 가능합니다.");
+return;
+}
+
+placeCount++;
+
+let div=document.createElement("div");
+div.className="placeRow";
+
+div.innerHTML=`
+<input type="text" class="place" placeholder="방문지 ${placeCount}">
+<button class="deleteBtn" onclick="removePlace(this)">❌</button>
+`;
+
+document.getElementById("places").appendChild(div);
+
+}
+
+window.removePlace=function(btn){
+btn.parentElement.remove();
+placeCount--;
+}
+
+window.resetAll=function(){
+
+document.getElementById("start").value="";
+document.getElementById("places").innerHTML="";
+placeCount=0;
+
+document.getElementById("distance").innerText="";
+document.getElementById("time").innerText="";
+document.getElementById("routeList").innerHTML="";
+
+clearMap();
+
+}
+
+function permute(arr){
+if(arr.length<=1) return [arr];
+
+let result=[];
+
+for(let i=0;i<arr.length;i++){
+let rest=[...arr.slice(0,i),...arr.slice(i+1)];
+
+for(let p of permute(rest)){
+result.push([arr[i],...p]);
+}
+}
+
+return result;
+}
+
+function getCoords(keyword){
+
+return new Promise(function(resolve,reject){
+
+let mode=document.querySelector('input[name="searchMode"]:checked').value;
+
+function addressSearch(){
+
+var geocoder=new kakao.maps.services.Geocoder();
+
+geocoder.addressSearch(keyword,function(result,status){
+
+if(status===kakao.maps.services.Status.OK){
+
+resolve({
+name:keyword,
+lat:parseFloat(result[0].y),
+lng:parseFloat(result[0].x)
+});
+
+}else{
+
+if(mode==="auto"){
+keywordSearch();
+}else{
+alert("주소 검색 실패");
+reject();
+}
+
+}
+
+});
+
+}
+
+function keywordSearch(){
+
+var ps=new kakao.maps.services.Places();
+
+ps.keywordSearch(keyword,function(result,status){
+
+if(status===kakao.maps.services.Status.OK){
+
+resolve({
+name:result[0].place_name,
+lat:parseFloat(result[0].y),
+lng:parseFloat(result[0].x)
+});
+
+}else{
+
+alert("검색 실패");
+reject();
+
+}
+
+});
+
+}
+
+if(mode==="address"){
+addressSearch();
+}else if(mode==="keyword"){
+keywordSearch();
+}else{
+addressSearch();
+}
+
+});
+}
+
+async function getRoadData(a,b){
+
+let url=`https://apis-navi.kakaomobility.com/v1/directions?origin=${a.lng},${a.lat}&destination=${b.lng},${b.lat}`;
+
+let res=await fetch(url,{
+headers:{Authorization:`KakaoAK ${REST_KEY}`}
+});
+
+let data=await res.json();
+
+return data.routes[0];
+
+}
+
+window.calculate=async function(){
+
+clearMap();
+
+let mode=document.querySelector('input[name="mode"]:checked').value;
+
+let start=document.getElementById("start").value.trim();
+
+let inputs=document.querySelectorAll(".place");
+
+let places=[];
+
+inputs.forEach(i=>{
+if(i.value.trim()!="") places.push(i.value.trim());
+});
+
+let startCoord;
+
+if(start==="현재 위치" && currentLocation){
+startCoord=currentLocation;
+}else{
+startCoord=await getCoords(start);
+}
+
+let coords=[];
+
+for(let p of places){
+coords.push(await getCoords(p));
+}
+
+let nodes=[startCoord,...coords];
+
+let idx=[...Array(coords.length).keys()].map(x=>x+1);
+
+let perms=permute(idx);
+
+let bestValue=Infinity;
+let bestRoute=null;
+let bestDist=0;
+let bestTime=0;
+
+for(let p of perms){
+
+let totalDist=0;
+let totalTime=0;
+let prev=0;
+
+for(let i of p){
+
+let road=await getRoadData(nodes[prev],nodes[i]);
+
+totalDist+=road.summary.distance/1000;
+totalTime+=road.summary.duration;
+
+prev=i;
+
+}
+
+let value=(mode==="distance")?totalDist:totalTime;
+
+if(value<bestValue){
+
+bestValue=value;
+bestRoute=p;
+bestDist=totalDist;
+bestTime=totalTime;
+
+}
+
+}
+
+let route=[nodes[0]];
+
+for(let i of bestRoute){
+route.push(nodes[i]);
+}
+
+await drawRoute(route);
+
+document.getElementById("distance").innerText="🚗 총 거리 : "+bestDist.toFixed(2)+" km";
+document.getElementById("time").innerText="⏱ 총 시간 : "+Math.round(bestTime/60)+" 분";
+
+let html="📍 방문 순서<br>";
+
+route.forEach((p,i)=>{
+html+=(i+1)+"️⃣ "+p.name+"<br>";
+});
+
+document.getElementById("routeList").innerHTML=html;
+
+}
+
+async function drawRoute(route){
+
+let bounds=new kakao.maps.LatLngBounds();
+
+for(let i=0;i<route.length;i++){
+
+let pos=new kakao.maps.LatLng(route[i].lat,route[i].lng);
+
+let marker=new kakao.maps.Marker({
+map:map,
+position:pos
+});
+
+markers.push(marker);
+
+bounds.extend(pos);
+
+if(i>0){
+
+let road=await getRoadData(route[i-1],route[i]);
+
+let path=[];
+
+road.sections[0].roads.forEach(r=>{
+
+for(let k=0;k<r.vertexes.length;k+=2){
+
+let lng=r.vertexes[k];
+let lat=r.vertexes[k+1];
+
+path.push(new kakao.maps.LatLng(lat,lng));
+
+}
+
+});
+
+let polyline=new kakao.maps.Polyline({
+map:map,
+path:path,
+strokeWeight:5,
+strokeColor:"#ff0000"
+});
+
+lines.push(polyline);
+
+}
+
+}
+
+map.setBounds(bounds);
+
+}
+
+window.setCurrentLocation=function(){
+
+navigator.geolocation.getCurrentPosition(function(position){
+
+let lat=position.coords.latitude;
+let lng=position.coords.longitude;
+
+currentLocation={
+name:"현재 위치",
+lat:lat,
+lng:lng
+};
+
+document.getElementById("start").value="현재 위치";
+
+});
+
+}
+
+});
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+</script>
+
+</body>
+</html>
