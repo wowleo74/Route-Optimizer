@@ -209,23 +209,6 @@ const REST_KEY="7b32497ba822d675fd0c5e0bdef06c4f";
 let currentLocation=null;
 let placeCount=0;
 
-kakao.maps.load(function(){
-
-var map=new kakao.maps.Map(document.getElementById('map'),{
-center:new kakao.maps.LatLng(36.5,127.8),
-level:13
-});
-
-var markers=[];
-var lines=[];
-
-function clearMap(){
-markers.forEach(m=>m.setMap(null));
-lines.forEach(l=>l.setMap(null));
-markers=[];
-lines=[];
-}
-
 window.addPlace=function(){
 
 if(placeCount>=5){
@@ -246,6 +229,27 @@ div.innerHTML=`
 document.getElementById("places").appendChild(div);
 
 }
+
+kakao.maps.load(function(){
+
+map=new kakao.maps.Map(document.getElementById('map'),{
+center:new kakao.maps.LatLng(36.5,127.8),
+level:13
+});
+
+markers=[];
+lines=[];
+
+function clearMap(){
+markers.forEach(m=>m.setMap(null));
+lines.forEach(l=>l.setMap(null));
+markers=[];
+lines=[];
+}
+
+
+
+
 
 window.removePlace=function(btn){
 btn.parentElement.remove();
